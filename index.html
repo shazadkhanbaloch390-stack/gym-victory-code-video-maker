@@ -1,0 +1,170 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gym Victory Code Video Maker</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#101010;color:white;font-family:Arial,sans-serif;padding:20px}
+.container{max-width:600px;margin:auto}
+h1{color:#ff3434;text-align:center}
+.subtitle{text-align:center;color:#aaa}
+.card{background:#202020;padding:18px;border-radius:14px;margin:16px 0}
+label{display:block;margin:15px 0 8px}
+input,select,button{width:100%;padding:13px;border-radius:8px;font-size:16px}
+input,select{background:#333;color:white;border:1px solid #555}
+button{background:#e52c2c;color:white;border:0;font-weight:bold;margin-top:15px}
+button:disabled{opacity:.5}
+#status{color:#ffd45c;white-space:pre-wrap;overflow-wrap:anywhere}
+video{width:100%;margin-top:15px}
+small{color:#aaa}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>GYM VICTORY CODE</h1>
+<p class="subtitle">MUSIC TO VIDEO MAKER</p>
+
+<div class="card">
+<h3>1. Upload Thumbnail</h3>
+<input type="file" id="image" accept="image/png,image/jpeg,image/webp">
+
+<h3>2. Upload Music</h3>
+<input type="file" id="audio" accept="audio/*">
+
+<h3>3. Multiply Your Music</h3>
+<select id="repeat">
+<option value="1">× 1</option>
+<option value="2">× 2</option>
+<option value="5">× 5</option>
+<option value="10" selected>× 10</option>
+<option value="20">× 20</option>
+<option value="50">× 50</option>
+</select>
+
+<h3>4. Video Quality</h3>
+<select id="quality">
+<option value="1280">720p HD</option>
+<option value="1920" selected>1080p Full HD</option>
+</select>
+
+<button id="generate">GENERATE MP4 VIDEO</button>
+<p id="status">Ready. Upload your image and music.</p>
+<progress id="progress" value="0" max="100" style="width:100%"></progress>
+</div>
+
+<div class="card">
+<h3>Your Video</h3>
+<video id="preview" controls playsinline></video>
+<a id="download" style="display:none;color:#65e889" download="gym-victory-code.mp4">
+Download Your MP4 Video
+</a>
+</div>
+</div>
+
+<script type="module">
+import { FFmpeg } from
+'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js';
+import { toBlobURL } from
+'https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.2/dist/esm/index.js';
+
+const ffmpeg = new FFmpeg();
+const status = document.getElementById('status');
+const button = document.getElementById('generate');
+const progress = document.getElementById('progress');
+
+let loaded = false;
+let videoURL = null;
+
+ffmpeg.on('log', ({message}) => {
+  status.textContent = message;
+});
+
+ffmpeg.on('progress', ({progress:p}) => {
+  progress.value = Math.round(p*100);
+});
+
+button.addEventListener('click', async () => {
+ const img = document.getElementById('image').files[0];
+ const aud = document.getElementById('audio').files[0];
+ const repeat = Number(document.getElementById('repeat').value);
+ const width = Number(document.getElementById('quality').value);
+
+ if(!img || !aud){
+   alert('Please upload both image and music!');
+   return;
+ }
+
+ button.disabled = true;
+ progress.value = 0;
+ status.textContent = 'Preparing video engine...';
+
+ try {
+   if(!loaded){
+     const base = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
+     await ffmpeg.load({
+       coreURL: await toBlobURL(base+'/ffmpeg-core.js','text/javascript'),
+       wasmURL: await toBlobURL(base+'/ffmpeg-core.wasm','application/wasm')
+     });
+     loaded = true;
+   }
+
+   status.textContent = 'Uploading files to video engine...';
+
+   const imageName = img.name.toLowerCase().endsWith('.png') ? 'cover.png' : 'cover.jpg';
+   const audioName = aud.name.toLowerCase().endsWith('.wav') ? 'music.wav' :
+     aud.name.toLowerCase().endsWith('.ogg') ? 'music.ogg' :
+     aud.name.toLowerCase().endsWith('.m4a') ? 'music.m4a' : 'music.mp3';
+
+   await ffmpeg.writeFile(imageName, new Uint8Array(await img.arrayBuffer()));
+   await ffmpeg.writeFile(audioName, new Uint8Array(await aud.arrayBuffer()));
+
+   status.textContent = 'Rendering your MP4 video... Please wait.';
+
+   const result = await ffmpeg.exec([
+     '-y',
+     '-loop','1',
+     '-framerate','30',
+     '-i',imageName,
+     '-stream_loop',String(repeat-1),
+     '-i',audioName,
+     '-vf',`scale=${width}:${Math.round(width*9/16)}:force_original_aspect_ratio=decrease,pad=${width}:${Math.round(width*9/16)}:(ow-iw)/2:(oh-ih)/2,format=yuv420p`,
+     '-c:v','libx264',
+     '-preset','ultrafast',
+     '-tune','stillimage',
+     '-c:a','aac',
+     '-b:a','192k',
+     '-shortest',
+     '-movflags','+faststart',
+     'output.mp4'
+   ]);
+
+   if(result !== 0) throw new Error('Video rendering failed.');
+
+   status.textContent = 'Preparing your download...';
+
+   const data = await ffmpeg.readFile('output.mp4');
+   const blob = new Blob([data.buffer],{type:'video/mp4'});
+
+   if(videoURL) URL.revokeObjectURL(videoURL);
+   videoURL = URL.createObjectURL(blob);
+
+   document.getElementById('preview').src = videoURL;
+   const link = document.getElementById('download');
+   link.href = videoURL;
+   link.style.display = 'block';
+
+   status.textContent = 'Your video is ready!';
+ } catch(error) {
+   status.textContent = 'Error: '+error.message+
+     '\nTry a smaller image or shorter audio file.';
+ } finally {
+   button.disabled = false;
+ }
+});
+</script>
+</body>
+  </html>
+  
